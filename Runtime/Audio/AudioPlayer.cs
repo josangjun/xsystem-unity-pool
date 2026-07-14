@@ -40,32 +40,40 @@ namespace XSystem
             set => _source.outputAudioMixerGroup = value;
         }
         
-        private Awaitable _coroutine;
-
+        private int _waitVersion;
+        
         public void Play()
         {
+            var waitVersion = ++_waitVersion;
             _source.time = 0;
             _source.Play();
             if (_onComplete == null)
                 return;
             if (_source.loop)
                 return;
-            if (_coroutine != null)
-                StopCoroutine(_coroutine);
-            _coroutine = Wait_(_source);
-            async Awaitable Wait_(AudioSource source)
+            _ = Wait_(_source, waitVersion);
+        }
+        
+        async Awaitable Wait_(AudioSource source, int version)
+        {
+            try
             {
                 var time = source.clip.length / source.pitch;
-                for (var t = 0f; t < time; t += Time.deltaTime)
+                for (var t = 0f; t < time; t += Time.unscaledDeltaTime)
                 {
-                    await Awaitable.NextFrameAsync();
+                    await Awaitable.NextFrameAsync(destroyCancellationToken);
+                    if (version != _waitVersion || isActiveAndEnabled == false)
+                        return;
                 }
-                if (this)
+                if (this && version == _waitVersion)
                 {
                     _onComplete(this);
                     _onComplete = null;
-                    _coroutine = null;
                 }
+            }
+            catch (System.OperationCanceledException)
+            {
+                return;
             }
         }
         
