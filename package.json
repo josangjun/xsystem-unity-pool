@@ -1,0 +1,21 @@
+{
+  "name": "xsystem.unitypool",
+  "displayName": "XSystem UnityPool",
+  "version": "1.0.0",
+  "description": "Unity object pooling and audio playback utilities for XSystem.",
+  "keywords": [
+    "xsystem",
+    "pool",
+    "audio"
+  ],
+  "dependencies": {
+    "com.unity.addressables": "2.9.1",
+    "xsystem.serialization": "1.0.0"
+  },
+  "author": {
+    "name": "sangjun jo",
+    "email": "josangjun@outlook.com",
+    "url": "https://github.com/josangjun/xsystem-unity-pool"
+  },
+  "license": "MIT"
+}
