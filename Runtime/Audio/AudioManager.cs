@@ -4,7 +4,7 @@
 // 주요 기능:
 // - Addressables 기반의 비동기 오디오 패키지/클립 로딩 및 준비 지원
 // - 오디오 플레이어 풀링, 믹서 그룹, 프리셋, 중복/덮어쓰기/오버랩 제어 등 다양한 오디오 제어 기능 제공
-// - AudioPlayerHandle을 통한 비동기 재생 결과 및 콜백, Awaiter 패턴 지원
+// - AudioEmitterHandle을 통한 비동기 재생 결과 및 콜백, Awaiter 패턴 지원
 // - UI, 게임, 효과음 등 다양한 상황에서 효율적이고 유연한 오디오 관리 가능
 
 using System.Collections.Generic;
@@ -19,30 +19,49 @@ namespace XSystem
     [DisallowMultipleComponent]
     public class AudioManager : MonoBehaviour, System.IDisposable
     {
-        private ObjectPool<AudioPlayer> _pool;
+        private ObjectPool<AudioEmitter> _pool;
         
         [SerializeField]
         private AssetReferenceT<AudioLibrary>[] _libraryRefs = {};
-        
+
         private List<AudioLibrary> _libraries = new List<AudioLibrary>();
+        private int _pendingLibraryLoads;
+
+        public event System.Action LibrariesLoaded;
+
+        public bool IsLibrariesLoaded { get; private set; }
         
         private Dictionary<string, AsyncOperationHandle> _handles = new();
         
         protected virtual void Awake()
         {
-            _pool = new ObjectPool<AudioPlayer>(CreatePlayer);
+            _pool = new ObjectPool<AudioEmitter>(CreateEmitter);
             _pool.OnRelease += OnRelease;
             _pool.OnGet += OnGet;
         }
         
         public void Start()
         {
+            IsLibrariesLoaded = false;
+            _pendingLibraryLoads = 0;
             foreach (var libraryRef in _libraryRefs)
             {
                 if (libraryRef.RuntimeKeyIsValid())
                 {
-                    _ = LoadLibrary(libraryRef.AssetGUID);
+                    ++_pendingLibraryLoads;
                 }
+            }
+
+            if (_pendingLibraryLoads == 0)
+            {
+                MarkLibrariesLoaded();
+                return;
+            }
+
+            foreach (var libraryRef in _libraryRefs)
+            {
+                if (libraryRef.RuntimeKeyIsValid())
+                    _ = LoadLibrary(libraryRef.AssetGUID);
             }
         }
         
@@ -53,6 +72,8 @@ namespace XSystem
                 if (handle.Status == AsyncOperationStatus.Succeeded) {
                     _libraries.Add(handle.Result);
                 }
+                if (_pendingLibraryLoads > 0 && --_pendingLibraryLoads == 0)
+                    MarkLibrariesLoaded();
             };
             _handles.Add(address, handle);
             return handle;
@@ -64,6 +85,12 @@ namespace XSystem
             {
                 if (h.IsValid())
                 {
+                    var library = h.Result as AudioLibrary;
+                    if (library != null)
+                    {
+                        library.Clear();
+                    }
+                    
                     Addressables.Release(h);
                     _handles.Remove(address);
                     return true;
@@ -79,27 +106,36 @@ namespace XSystem
             {
                 var h = kv.Value;
                 if (h.IsValid())
+                {
+                    var library = h.Result as AudioLibrary;
+                    if (library != null)
+                    {
+                        library.Clear();
+                    }
+                    
                     Addressables.Release(h);
+                }
             }
             _handles.Clear();
         }
 
-        private void OnGet(AudioPlayer player)
+        private void OnGet(AudioEmitter emitter)
         {
-            player.gameObject.SetActive(true);
+            emitter.gameObject.SetActive(true);
         }
         
-        private void OnRelease(AudioPlayer player)
+        private void OnRelease(AudioEmitter emitter)
         {
-            player.gameObject.SetActive(false);
+            emitter.transform.SetParent(transform);
+            emitter.gameObject.SetActive(false);
         }
 
-        private AudioPlayer CreatePlayer()
+        private AudioEmitter CreateEmitter()
         {
-            var go = new GameObject("AudioPlayer", typeof(AudioSource), typeof(AudioPlayer));
+            var go = new GameObject("AudioEmitter", typeof(AudioSource), typeof(AudioEmitter));
             go.transform.SetParent(transform);
-            var player = go.GetComponent<AudioPlayer>();
-            return player;
+            var emitter = go.GetComponent<AudioEmitter>();
+            return emitter;
         }
         
         public bool Stop(string clipName, Transform parent = null)
@@ -113,13 +149,13 @@ namespace XSystem
                 var child = parent.GetChild(i);
                 if (child.gameObject.activeSelf == false)
                     continue;
-                var player = child.GetComponent<AudioPlayer>();
-                if (player.IsActive() == false || player.clip == null)
+                var emitter = child.GetComponent<AudioEmitter>();
+                if (emitter.IsActive() == false || emitter.clip == null)
                     continue;
                     
-                if (player.clip.name == clipName)
+                if (emitter.clip.name == clipName)
                 {
-                    Release(player);
+                    Release(emitter);
                     ++count;
                 }
             }
@@ -132,7 +168,7 @@ namespace XSystem
             
         }
         
-        public AudioPlayerHandle Play(string clipName, Transform parent = null)
+        public AudioEmitterHandle Play(string clipName, Transform parent = null)
         {
             foreach (var library in _libraries)
             {
@@ -148,7 +184,7 @@ namespace XSystem
                 {
                     var h = preset.clip.LoadAssetAsync();
                     return Load_();
-                    async Awaitable<AudioPlayer> Load_() {
+                    async Awaitable<AudioEmitter> Load_() {
                         await h.Task;
                         return Play(mixerGroup, preset, parent);
                     }
@@ -157,7 +193,7 @@ namespace XSystem
             return default;
         }
         
-        private AudioPlayer Play(AudioMixerGroup mixerGroup, AudioPreset preset, Transform parent)
+        private AudioEmitter Play(AudioMixerGroup mixerGroup, AudioPreset preset, Transform parent)
         {
             if (parent == null)
                 parent = transform;
@@ -167,7 +203,7 @@ namespace XSystem
                 for (var i = parent.childCount - 1; i >= 0; --i)
                 {   
                     var child = parent.GetChild(i);
-                    var p = child.GetComponent<AudioPlayer>();
+                    var p = child.GetComponent<AudioEmitter>();
                     if (p != null && p.isActiveAndEnabled && p.clip == preset.clip.Asset)
                     {
                         if (preset.Override == false)
@@ -182,22 +218,32 @@ namespace XSystem
                     }
                 }
             }
-            var player = _pool.Get();
-            player.transform.SetParent(parent);
-            player.transform.localPosition = Vector3.zero;
-            player.clip = preset.clip.Asset;
-            player.volume = preset.Volume;
-            player.pitch = preset.Pitch;
-            player.mixerGroup = mixerGroup;
-            player.OnComplete(Release);
-            player.Play();
-            return player;
+            var emitter = _pool.Get();
+            emitter.transform.SetParent(parent);
+            emitter.transform.localPosition = Vector3.zero;
+            emitter.clip = preset.clip.Asset;
+            emitter.volume = preset.Volume;
+            emitter.pitch = preset.Pitch;
+            emitter.loop = preset.Loop;
+            emitter.mixerGroup = mixerGroup;
+            emitter.OnComplete(Release);
+            emitter.Play();
+            return emitter;
+        }
+
+        private void MarkLibrariesLoaded()
+        {
+            if (IsLibrariesLoaded)
+                return;
+
+            IsLibrariesLoaded = true;
+            LibrariesLoaded?.Invoke();
         }
         
-        public void Release(AudioPlayer player)
+        public void Release(AudioEmitter emitter)
         {
-            player.transform.SetParent(transform);
-            _pool.Release(player);
+            emitter.transform.SetParent(transform);
+            _pool.Release(emitter);
         }
         
         List<AsyncOperationHandle> _tasks = new();
@@ -244,17 +290,17 @@ namespace XSystem
         }
     }
     
-    public struct AudioPlayerHandle
+    public struct AudioEmitterHandle
     {
-        public AudioPlayer Result { get; private set; }
+        public AudioEmitter Result { get; private set; }
         
-        private Awaitable<AudioPlayer> _task;
-        public Awaitable<AudioPlayer> Task
+        private Awaitable<AudioEmitter> _task;
+        public Awaitable<AudioEmitter> Task
         { 
             get
             {
                 if (_task == null && Result != null) {
-                    var completionSource = new AwaitableCompletionSource<AudioPlayer>();
+                    var completionSource = new AwaitableCompletionSource<AudioEmitter>();
                     completionSource.SetResult(Result);
                     return completionSource.Awaitable;
                 }
@@ -263,17 +309,17 @@ namespace XSystem
             private set => _task = value;
         }
 
-        public static implicit operator AudioPlayerHandle(AudioPlayer player)
+        public static implicit operator AudioEmitterHandle(AudioEmitter emitter)
         {
-            return new AudioPlayerHandle { Result = player };
+            return new AudioEmitterHandle { Result = emitter };
         }
         
-        public static implicit operator AudioPlayerHandle(Awaitable<AudioPlayer> task)
+        public static implicit operator AudioEmitterHandle(Awaitable<AudioEmitter> task)
         {
-            return new AudioPlayerHandle { Task = task };
+            return new AudioEmitterHandle { Task = task };
         }
         
-        public static implicit operator bool(AudioPlayerHandle handle)
+        public static implicit operator bool(AudioEmitterHandle handle)
         {
             return handle.IsValid();
         }
@@ -292,17 +338,17 @@ namespace XSystem
             return false;
         }
         
-        public void OnComplete(System.Action<AudioPlayer> action)
+        public void OnComplete(System.Action<AudioEmitter> action)
         {
             if (Result != null) {
                 action.Invoke(Result);
                 return;
             }
             
-            async void Wait_(Awaitable<AudioPlayer> task)
+            async void Wait_(Awaitable<AudioEmitter> task)
             {
-                var player = await task;
-                action.Invoke(player);
+                var emitter = await task;
+                action.Invoke(emitter);
             }
             Wait_(Task);
         }

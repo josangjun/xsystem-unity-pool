@@ -5,7 +5,7 @@ using UnityEngine.Audio;
 namespace XSystem
 {
     [DisallowMultipleComponent, RequireComponent(typeof(AudioSource))]
-    public class AudioPlayer : PoolItem
+    public class AudioEmitter : PoolItem
     {
         private AudioSource _source;
         
@@ -33,6 +33,11 @@ namespace XSystem
         public float pitch {
             get => _source.pitch;
             set => _source.pitch = value;
+        }
+
+        public bool loop {
+            get => _source.loop;
+            set => _source.loop = value;
         }
         
         public AudioMixerGroup mixerGroup {
@@ -77,9 +82,9 @@ namespace XSystem
             }
         }
         
-        private System.Action<AudioPlayer> _onComplete;
+        private System.Action<AudioEmitter> _onComplete;
         
-        public void OnComplete(System.Action<AudioPlayer> action)
+        public void OnComplete(System.Action<AudioEmitter> action)
         {
             _onComplete = action;
         }

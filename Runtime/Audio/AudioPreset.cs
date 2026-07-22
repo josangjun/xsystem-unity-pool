@@ -16,10 +16,7 @@ namespace XSystem
         private string _name;
         public string Name  {
             get => _name;
-            set {
-                _name = value;
-                _hash = StringToHash(_name);
-            }
+            set => _name = value;
         }
         public AudioClipLink clip;
         [SerializeField, Range(0, 5)]
@@ -53,6 +50,10 @@ namespace XSystem
         private float _pitch;
         public float Pitch { get => _pitch; set => _pitch = value; }
 
+        [SerializeField]
+        private bool _loop;
+        public bool Loop { get => _loop; set => _loop = value; }
+
         public bool Overlap => _concurrency == AudioConcurrency.Overlap;
 
         public bool Override => _concurrency == AudioConcurrency.Override;
@@ -62,20 +63,6 @@ namespace XSystem
 
         public AudioConcurrency Concurrency { get => _concurrency; set => _concurrency = value; }
 
-
-        [SerializeField, HideInInspector]
-        public int _hash;
-        public int Hash => _hash;
-
-        public void OnValidate()
-        {
-            _hash = StringToHash(Name);
-        }
-        
-        public static int StringToHash(string value)
-        {
-            return Animator.StringToHash(value);
-        }
 
         public int CompareTo(string other)
         {

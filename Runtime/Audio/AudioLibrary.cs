@@ -22,18 +22,21 @@ namespace XSystem
 
         public void OnAfterDeserialize()
         {
+            _dict.Clear();
+
             foreach (var preset in _presets)
             {
-                _dict[preset.Hash] = preset;
+                if (preset != null && !string.IsNullOrEmpty(preset.Name))
+                    _dict[preset.Name] = preset;
             }
         }
 
-        private IDictionary<int, AudioPreset> _dict = new Dictionary<int, AudioPreset>();
+        private IDictionary<string, AudioPreset> _dict =
+            new Dictionary<string, AudioPreset>(System.StringComparer.Ordinal);
 
         public AudioPreset GetPreset(string name)
         {
-            var h = AudioPreset.StringToHash(name);
-            var preset = GetPreset(h);
+            var preset = _dict.TryGetValue(name, out var result) ? result : null;
             if (preset == null)
             {
                 Debug.LogWarning($"AudioPreset with name '{name}' not found in AudioLibrary '{this.name}'.");
@@ -42,19 +45,12 @@ namespace XSystem
             return preset;
         }
         
-        public AudioPreset GetPreset(int hash)
-        {
-            if (_dict.TryGetValue(hash, out var preset))
-                return preset;
-            
-            return null;
-        }
-        
         public void Clear()
         {
             foreach (var preset in _presets)
             {
-                preset.clip.ReleaseAsset();
+                if (preset.clip != null && preset.clip.OperationHandle.IsValid())
+                    preset.clip.ReleaseAsset();
             }
         }
 
