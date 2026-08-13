@@ -31,6 +31,11 @@ namespace XSystem
             
             if (OperationHandle.IsValid())
             {
+                if (OperationHandle.Status == AsyncOperationStatus.Succeeded && OperationHandle.Result != null)
+                {
+                    Asset = OperationHandle.Result.GetComponent<T>();
+                    return (T)Asset;
+                }
                 Addressables.Release(OperationHandle);
             }
             OperationHandle = Addressables.LoadAssetAsync<GameObject>(Key);
@@ -65,6 +70,11 @@ namespace XSystem
             
             if (OperationHandle.IsValid())
             {
+                if (OperationHandle.Status == AsyncOperationStatus.Succeeded && OperationHandle.Result != null)
+                {
+                    Asset = OperationHandle.Result.GetComponent<T>();
+                    return (T)Asset;
+                }
                 Addressables.Release(OperationHandle);
             }
             OperationHandle = Addressables.LoadAssetAsync<GameObject>(Key);
@@ -87,10 +97,7 @@ namespace XSystem
             Asset = prefab.GetComponent<PoolItem>();
             if (Asset == null)
             {
-                Debug.LogError($"Failed to get component {typeof(T)} from prefab {Key}");
-                Addressables.Release(OperationHandle);
-                OperationHandle = default;
-                return default;
+                Asset = prefab.AddComponent<PoolItem>();
             }
             try {
                 return (T)Asset;
@@ -126,6 +133,7 @@ namespace XSystem
         internal T InstantiateT<T>(T prefab, Transform parent, bool worldPositionStays = false) where T : PoolItem
         {
             var item = Container.Instantiate(prefab, parent, worldPositionStays);
+            item.Key = prefab.Key;
             OnGet(item);
             return item;
         }
@@ -134,6 +142,7 @@ namespace XSystem
         internal T InstantiateT<T>(T prefab, Transform parent, bool worldPositionStays = false) where T : PoolItem
         {
             var item = UnityEngine.Object.Instantiate(prefab, parent, worldPositionStays);
+            item.Key = prefab.Key;
             OnGet(item);
             return item;
         }
@@ -146,9 +155,11 @@ namespace XSystem
         
         internal void OnGet(PoolItem item) {
             item.gameObject.SetActive(true);
+            item.OnGet();
         }
         
         private void OnRelease(PoolItem item) {
+            item.OnRelease();
             item.transform.SetParent(transform);
             item.gameObject.SetActive(false);
         }
@@ -221,6 +232,7 @@ namespace XSystem
                 var asset = stack.LoadAsset<T>();
                 if (asset != null)
                 {
+                    asset.Key = stack.Key;
                     item = InstantiateT(asset, parent);
                 }
             }
@@ -245,6 +257,7 @@ namespace XSystem
                 
                 if (asset != null)
                 {
+                    asset.Key = stack.Key;
                     item = InstantiateT(asset, parent);
                 }
             }
@@ -323,8 +336,17 @@ namespace XSystem
         
         public void Release(PoolItem item)
         {
+            if (item == null)
+                return;
+
             OnRelease(item);
-            var key = item.name;
+            var key = item.Key;
+            if (string.IsNullOrEmpty(key))
+            {
+                Destroy(item.gameObject);
+                return;
+            }
+
             if (!_pool.TryGetValue(key, out var stack))
             {
                 Destroy(item.gameObject);
