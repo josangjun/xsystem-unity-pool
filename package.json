@@ -3,6 +3,7 @@
   "displayName": "XSystem UnityPool",
   "version": "1.0.0",
   "description": "Unity object pooling and audio playback utilities for XSystem.",
+  "hideInEditor": false,
   "keywords": [
     "xsystem",
     "pool",
