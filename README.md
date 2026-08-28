@@ -11,7 +11,7 @@ Unity object-pooling and audio playback utilities for XSystem projects.
 ## Dependencies
 
 * `com.unity.addressables` 2.9.1 or newer.
-* `xsystem.serialization` 1.0.0 or newer, used by `AudioClipLink`.
+* `xsystem.serialization` 1.0.0 or newer, used by the Addressables-backed `AudioClipLink`.
 * VContainer is optional, but must be installed when using `UnityPool` with VContainer integration.
 
 ## Installation

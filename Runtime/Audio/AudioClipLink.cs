@@ -4,8 +4,10 @@ using System.Reflection;
 namespace XSystem
 {
     [System.Serializable]
-    public class AudioClipLink : SoftLink<AudioClip>
+    public class AudioClipLink : AssetLink<AudioClip>
     {
+        public AudioClipLink() { }
+
         public AudioClipLink(string guid) : base(guid) { }
     }
 }
@@ -15,13 +17,8 @@ namespace XSystem
 {
     using UnityEditor;
     [CustomPropertyDrawer(typeof(AudioClipLink))]
-    public class AudioClipLinkDrawer : SoftLinkDrawer
+    public class AudioClipLinkDrawer : AssetLinkDrawer
     {
-        protected override System.Type GetFieldType()
-        {
-            return typeof(AudioClip);
-        }
-
         protected override void DrawProperty(Rect position, SerializedProperty property, GUIContent content)
         {
             var fieldRect = position;
@@ -29,15 +26,17 @@ namespace XSystem
             var stopRect = position;
 
             fieldRect.width = position.width * 0.85f;
-            playRect.xMin = fieldRect.xMax + 2f;
-            playRect.width = playRect.width * 0.5f - 1f;
-            stopRect.xMin = playRect.xMax + 2f;
+            playRect.x = fieldRect.xMax + 2f;
+            playRect.width = (position.xMax - playRect.x - 2f) * 0.5f;
+            stopRect.x = playRect.xMax + 2f;
+            stopRect.width = position.xMax - stopRect.x;
 
             base.DrawProperty(fieldRect, property, content);
 
             if (GUI.Button(playRect, "▷"))
             {
-                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(pathProp.stringValue);
+                var path = GetAssetPath();
+                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
                 if (clip)
                     PlayClip(clip);
             }
