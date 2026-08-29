@@ -19,6 +19,8 @@ namespace XSystem
     [DisallowMultipleComponent]
     public class AudioManager : MonoBehaviour, System.IDisposable
     {
+        private static AudioManager _activeInstance;
+
         private ObjectPool<AudioEmitter> _pool;
         
         [SerializeField]
@@ -30,11 +32,26 @@ namespace XSystem
         public event System.Action LibrariesLoaded;
 
         public bool IsLibrariesLoaded { get; private set; }
+
+        internal static bool TryGetActive(out AudioManager audioManager)
+        {
+            audioManager = _activeInstance;
+            return audioManager != null;
+        }
         
         private Dictionary<string, AsyncOperationHandle> _handles = new();
         
         protected virtual void Awake()
         {
+            if (_activeInstance == null)
+            {
+                _activeInstance = this;
+            }
+            else if (_activeInstance != this)
+            {
+                Debug.LogError("Multiple active AudioManager instances detected.", this);
+            }
+
             _pool = new ObjectPool<AudioEmitter>(CreateEmitter);
             _pool.OnRelease += OnRelease;
             _pool.OnGet += OnGet;
@@ -102,6 +119,11 @@ namespace XSystem
 
         private void OnDestroy()
         {
+            if (_activeInstance == this)
+            {
+                _activeInstance = null;
+            }
+
             foreach (var kv in _handles)
             {
                 var h = kv.Value;

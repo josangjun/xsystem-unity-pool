@@ -60,13 +60,10 @@ namespace XSystem
 
             if (_audioManager == null)
             {
-                var go = GameObject.FindWithTag("GameController");
-                _audioManager = go.GetComponent<AudioManager>();
-            }
-
-            if (_audioManager == null)
-            {
-                return;
+                if (!AudioManager.TryGetActive(out _audioManager))
+                {
+                    return;
+                }
             }
 
             if (!_audioManager.IsLibrariesLoaded)
