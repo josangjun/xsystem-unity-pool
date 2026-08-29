@@ -4,9 +4,9 @@ Unity object-pooling and audio playback utilities for XSystem projects.
 
 ## Features
 
-* `UnityPool` and `PoolItem` for pooling Addressables-backed prefabs.
+* `UnityPool`, `PoolItem`, and `PooledParticleEffect` for pooling Addressables-backed prefabs.
 * `ObjectPool`, `StaticPool`, `ListPool`, and `RefCountObject` for managed-object pooling.
-* `AudioManager`, `AudioLibrary`, and `AudioEmitter` for pooled audio playback.
+* `AudioManager`, `AudioLibrary`, `AudioEmitter`, and `AudioCue` for pooled audio playback.
 
 ## Dependencies
 

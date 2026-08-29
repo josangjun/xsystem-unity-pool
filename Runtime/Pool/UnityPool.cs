@@ -158,9 +158,10 @@ namespace XSystem
             item.OnGet();
         }
         
-        private void OnRelease(PoolItem item) {
+        private void OnRelease(PoolItem item, bool reparentToPool = true) {
             item.OnRelease();
-            item.transform.SetParent(transform);
+            if (reparentToPool)
+                item.transform.SetParent(transform);
             item.gameObject.SetActive(false);
         }
 
@@ -334,12 +335,12 @@ namespace XSystem
             return item;
         }
         
-        public void Release(PoolItem item)
+        public void Release(PoolItem item, bool reparentToPool = true)
         {
             if (item == null)
                 return;
 
-            OnRelease(item);
+            OnRelease(item, reparentToPool);
             var key = item.Key;
             if (string.IsNullOrEmpty(key))
             {

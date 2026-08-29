@@ -167,6 +167,19 @@ namespace XSystem
         {
             
         }
+
+        private AsyncOperationHandle<AudioClip> GetOrLoadClipHandle(AudioClipLink clip)
+        {
+            // AssetReferenceT keeps the handle after the first load, including while
+            // the operation is still pending. Reuse it instead of starting a second
+            // load for the same AssetReference instance.
+            if (clip.OperationHandle.IsValid())
+            {
+                return clip.OperationHandle.Convert<AudioClip>();
+            }
+
+            return clip.LoadAssetAsync();
+        }
         
         public AudioEmitterHandle Play(string clipName, Transform parent = null)
         {
@@ -182,7 +195,7 @@ namespace XSystem
                 }
                 else
                 {
-                    var h = preset.clip.LoadAssetAsync();
+                    var h = GetOrLoadClipHandle(preset.clip);
                     return Load_();
                     async Awaitable<AudioEmitter> Load_() {
                         await h.Task;
@@ -261,7 +274,7 @@ namespace XSystem
                     {
                         if (preset.clip.Asset)
                             continue;
-                        var t = preset.clip.LoadAssetAsync();
+                        var t = GetOrLoadClipHandle(preset.clip);
                         _tasks.Add(t);
                         break;
                     }
