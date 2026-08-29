@@ -33,7 +33,7 @@ namespace XSystem
 
         public bool IsLibrariesLoaded { get; private set; }
 
-        internal static bool TryGetActive(out AudioManager audioManager)
+        public static bool TryGetActive(out AudioManager audioManager)
         {
             audioManager = _activeInstance;
             return audioManager != null;
