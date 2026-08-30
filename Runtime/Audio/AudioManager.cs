@@ -13,57 +13,91 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.Audio;
 using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.Serialization;
 
 namespace XSystem
 {
     [DisallowMultipleComponent]
     public class AudioManager : MonoBehaviour, System.IDisposable
     {
-        private static AudioManager _activeInstance;
-
-        private ObjectPool<AudioEmitter> _pool;
+        private ObjectPool<AudioEmitter> _emitterPool;
         
         [SerializeField]
-        private AssetReferenceT<AudioLibrary>[] _libraryRefs = {};
+        [FormerlySerializedAs("_libraryRefs")]
+        private AssetReferenceT<AudioLibrary>[] _libraryReferences = {};
 
-        private List<AudioLibrary> _libraries = new List<AudioLibrary>();
+        private List<AudioLibrary> _loadedLibraries = new List<AudioLibrary>();
         private int _pendingLibraryLoads;
 
         public event System.Action LibrariesLoaded;
 
-        public bool IsLibrariesLoaded { get; private set; }
+        public bool AreLibrariesLoaded { get; private set; }
 
-        public static bool TryGetActive(out AudioManager audioManager)
+        private static int _nextEventKey;
+        
+        private struct PendingAudioEvent
         {
-            audioManager = _activeInstance;
-            return audioManager != null;
+            private string _presetName;
+            private System.Action<int> _onDispatched;
+            
+            public string PresetName => _presetName;
+            
+            public PendingAudioEvent(string presetName, System.Action<int> onDispatched)
+            {
+                _presetName = presetName;
+                _onDispatched = onDispatched;
+            }
+            
+            public void Dispatch(int eventKey)
+            {
+                if (_onDispatched != null)
+                    _onDispatched(eventKey);
+            }
         }
         
-        private Dictionary<string, AsyncOperationHandle> _handles = new();
+        private static Dictionary<int, PendingAudioEvent> _pendingEvents = new();
+        
+        internal static int PostEvent(string presetName, System.Action<int> onDispatched = null)
+        {
+            var eventKey = ++_nextEventKey;
+            _pendingEvents.Add(eventKey, new PendingAudioEvent(presetName, onDispatched));
+            return eventKey;
+        }
+        
+        internal static bool CancelEvent(int eventKey)
+        {
+            return _pendingEvents.Remove(eventKey);
+        }
+        
+        private void Update()
+        {
+            if (_pendingEvents.Count > 0)
+            {
+                foreach (var pendingEvent in _pendingEvents)
+                {
+                    Play(pendingEvent.Value.PresetName);
+                    pendingEvent.Value.Dispatch(pendingEvent.Key);
+                }
+                _pendingEvents.Clear();
+            }
+        }
+        
+        private Dictionary<string, AsyncOperationHandle> _libraryHandles = new();
         
         protected virtual void Awake()
         {
-            if (_activeInstance == null)
-            {
-                _activeInstance = this;
-            }
-            else if (_activeInstance != this)
-            {
-                Debug.LogError("Multiple active AudioManager instances detected.", this);
-            }
-
-            _pool = new ObjectPool<AudioEmitter>(CreateEmitter);
-            _pool.OnRelease += OnRelease;
-            _pool.OnGet += OnGet;
+            _emitterPool = new ObjectPool<AudioEmitter>(CreateEmitter);
+            _emitterPool.OnRelease += OnRelease;
+            _emitterPool.OnGet += OnGet;
         }
         
         public void Start()
         {
-            IsLibrariesLoaded = false;
+            AreLibrariesLoaded = false;
             _pendingLibraryLoads = 0;
-            foreach (var libraryRef in _libraryRefs)
+            foreach (var libraryReference in _libraryReferences)
             {
-                if (libraryRef.RuntimeKeyIsValid())
+                if (libraryReference.RuntimeKeyIsValid())
                 {
                     ++_pendingLibraryLoads;
                 }
@@ -75,70 +109,65 @@ namespace XSystem
                 return;
             }
 
-            foreach (var libraryRef in _libraryRefs)
+            foreach (var libraryReference in _libraryReferences)
             {
-                if (libraryRef.RuntimeKeyIsValid())
-                    _ = LoadLibrary(libraryRef.AssetGUID);
+                if (libraryReference.RuntimeKeyIsValid())
+                    _ = LoadLibrary(libraryReference.AssetGUID);
             }
         }
         
-        public AsyncOperationHandle LoadLibrary(string address)
+        public AsyncOperationHandle LoadLibrary(string libraryKey)
         {
-            var handle = Addressables.LoadAssetAsync<AudioLibrary>(address);
-            handle.Completed += h => {
-                if (handle.Status == AsyncOperationStatus.Succeeded) {
-                    _libraries.Add(handle.Result);
+            var handle = Addressables.LoadAssetAsync<AudioLibrary>(libraryKey);
+            handle.Completed += completedHandle => {
+                if (completedHandle.Status == AsyncOperationStatus.Succeeded) {
+                    _loadedLibraries.Add(completedHandle.Result);
                 }
                 if (_pendingLibraryLoads > 0 && --_pendingLibraryLoads == 0)
                     MarkLibrariesLoaded();
             };
-            _handles.Add(address, handle);
+            _libraryHandles.Add(libraryKey, handle);
             return handle;
         }
-
-        public bool Unload(string address)
+        
+        public bool Unload(string libraryKey)
         {
-            if (_handles.TryGetValue(address, out var h))
+            if (_libraryHandles.TryGetValue(libraryKey, out var handle))
             {
-                if (h.IsValid())
+                if (handle.IsValid())
                 {
-                    var library = h.Result as AudioLibrary;
+                    var library = handle.Result as AudioLibrary;
                     if (library != null)
                     {
                         library.Clear();
                     }
                     
-                    Addressables.Release(h);
-                    _handles.Remove(address);
+                    Addressables.Release(handle);
+                    _libraryHandles.Remove(libraryKey);
                     return true;
                 }
-                _handles.Remove(address);
+                _libraryHandles.Remove(libraryKey);
             }
             return false;
         }
 
         private void OnDestroy()
         {
-            if (_activeInstance == this)
+            foreach (var libraryHandle in _libraryHandles)
             {
-                _activeInstance = null;
-            }
-
-            foreach (var kv in _handles)
-            {
-                var h = kv.Value;
-                if (h.IsValid())
+                var handle = libraryHandle.Value;
+                if (handle.IsValid())
                 {
-                    var library = h.Result as AudioLibrary;
+                    var library = handle.Result as AudioLibrary;
                     if (library != null)
                     {
                         library.Clear();
                     }
                     
-                    Addressables.Release(h);
+                    Addressables.Release(handle);
                 }
             }
-            _handles.Clear();
+            _libraryHandles.Clear();
         }
 
         private void OnGet(AudioEmitter emitter)
@@ -160,15 +189,15 @@ namespace XSystem
             return emitter;
         }
         
-        public bool Stop(string clipName, Transform parent = null)
+        public bool Stop(string clipName, Transform emitterParent = null)
         {
-            if (parent == null)
-                parent = transform;
+            if (emitterParent == null)
+                emitterParent = transform;
             
             int count = 0;
-            for (var i = parent.childCount - 1; i >= 0; --i)
+            for (var i = emitterParent.childCount - 1; i >= 0; --i)
             {
-                var child = parent.GetChild(i);
+                var child = emitterParent.GetChild(i);
                 if (child.gameObject.activeSelf == false)
                     continue;
                 var emitter = child.GetComponent<AudioEmitter>();
@@ -190,77 +219,77 @@ namespace XSystem
             
         }
 
-        private AsyncOperationHandle<AudioClip> GetOrLoadClipHandle(AudioClipLink clip)
+        private AsyncOperationHandle<AudioClip> GetOrLoadClipHandle(AudioClipLink clipLink)
         {
             // AssetReferenceT keeps the handle after the first load, including while
             // the operation is still pending. Reuse it instead of starting a second
             // load for the same AssetReference instance.
-            if (clip.OperationHandle.IsValid())
+            if (clipLink.OperationHandle.IsValid())
             {
-                return clip.OperationHandle.Convert<AudioClip>();
+                return clipLink.OperationHandle.Convert<AudioClip>();
             }
 
-            return clip.LoadAssetAsync();
+            return clipLink.LoadAssetAsync();
         }
         
-        public AudioEmitterHandle Play(string clipName, Transform parent = null)
+        public AudioEmitterHandle Play(string presetName, Transform emitterParent = null)
         {
-            foreach (var library in _libraries)
+            foreach (var library in _loadedLibraries)
             {
-                var preset = library.GetPreset(clipName);
+                var preset = library.GetPreset(presetName);
                 if (preset == null)
                     continue;
-                var mixerGroup = library.mixerGroup;
+                var outputMixerGroup = library.mixerGroup;
                 if (preset.clip.Asset)
                 {
-                    return Play(mixerGroup, preset, parent);
+                    return Play(outputMixerGroup, preset, emitterParent);
                 }
                 else
                 {
-                    var h = GetOrLoadClipHandle(preset.clip);
+                    var clipHandle = GetOrLoadClipHandle(preset.clip);
                     return Load_();
                     async Awaitable<AudioEmitter> Load_() {
-                        await h.Task;
-                        return Play(mixerGroup, preset, parent);
+                        await clipHandle.Task;
+                        return Play(outputMixerGroup, preset, emitterParent);
                     }
                 }
             }
             return default;
         }
         
-        private AudioEmitter Play(AudioMixerGroup mixerGroup, AudioPreset preset, Transform parent)
+        private AudioEmitter Play(AudioMixerGroup outputMixerGroup, AudioPreset preset, Transform emitterParent)
         {
-            if (parent == null)
-                parent = transform;
+            if (emitterParent == null)
+                emitterParent = transform;
             
             if (preset.Overlap == false)
             {
-                for (var i = parent.childCount - 1; i >= 0; --i)
+                for (var i = emitterParent.childCount - 1; i >= 0; --i)
                 {   
-                    var child = parent.GetChild(i);
-                    var p = child.GetComponent<AudioEmitter>();
-                    if (p != null && p.isActiveAndEnabled && p.clip == preset.clip.Asset)
+                    var child = emitterParent.GetChild(i);
+                    var existingEmitter = child.GetComponent<AudioEmitter>();
+                    if (existingEmitter != null && existingEmitter.isActiveAndEnabled && existingEmitter.clip == preset.clip.Asset)
                     {
                         if (preset.Override == false)
                         {
-                            return p;
+                            return existingEmitter;
                         }
                         else
                         {
-                            p.Play();
-                            return p;
+                            existingEmitter.Play();
+                            return existingEmitter;
                         }
                     }
                 }
             }
-            var emitter = _pool.Get();
-            emitter.transform.SetParent(parent);
+            var emitter = _emitterPool.Get();
+            emitter.transform.SetParent(emitterParent);
             emitter.transform.localPosition = Vector3.zero;
             emitter.clip = preset.clip.Asset;
             emitter.volume = preset.Volume;
             emitter.pitch = preset.Pitch;
             emitter.loop = preset.Loop;
-            emitter.mixerGroup = mixerGroup;
+            emitter.mixerGroup = outputMixerGroup;
             emitter.OnComplete(Release);
             emitter.Play();
             return emitter;
@@ -268,42 +297,42 @@ namespace XSystem
 
         private void MarkLibrariesLoaded()
         {
-            if (IsLibrariesLoaded)
+            if (AreLibrariesLoaded)
                 return;
 
-            IsLibrariesLoaded = true;
+            AreLibrariesLoaded = true;
             LibrariesLoaded?.Invoke();
         }
         
         public void Release(AudioEmitter emitter)
         {
             emitter.transform.SetParent(transform);
-            _pool.Release(emitter);
+            _emitterPool.Release(emitter);
         }
         
-        List<AsyncOperationHandle> _tasks = new();
+        private List<AsyncOperationHandle> _prepareTasks = new();
         
-        public async Awaitable Prepare(params string[] clipNames)
+        public async Awaitable Prepare(params string[] presetNames)
         {
-            _tasks.Clear();
+            _prepareTasks.Clear();
             
-            foreach (var clipName in clipNames)
+            foreach (var presetName in presetNames)
             {
-                foreach (var library in _libraries)
+                foreach (var library in _loadedLibraries)
                 {
-                    var preset = library.GetPreset(clipName);
+                    var preset = library.GetPreset(presetName);
                     if (preset != null)
                     {
                         if (preset.clip.Asset)
                             continue;
-                        var t = GetOrLoadClipHandle(preset.clip);
-                        _tasks.Add(t);
+                        var clipHandle = GetOrLoadClipHandle(preset.clip);
+                        _prepareTasks.Add(clipHandle);
                         break;
                     }
                 }
             }
 
-            while (_tasks.All(s => s.Status != AsyncOperationStatus.None) == false)
+            while (_prepareTasks.All(handle => handle.Status != AsyncOperationStatus.None) == false)
             {
                 await Awaitable.NextFrameAsync();
             }
@@ -311,12 +340,12 @@ namespace XSystem
         
         public void Clear()
         {
-            foreach (var library in _libraries)
+            foreach (var library in _loadedLibraries)
             {
                 library.Clear();
                 Addressables.Release(library);
             }
-            _libraries.Clear();
+            _loadedLibraries.Clear();
         }
         
         public void Dispose()
@@ -364,7 +393,7 @@ namespace XSystem
             return Task != null || Result != null;
         }
         
-        public bool IsCompleted()
+        public bool HasImmediateResult()
         {
             if (Result != null)
                 return true;
@@ -373,19 +402,19 @@ namespace XSystem
             return false;
         }
         
-        public void OnComplete(System.Action<AudioEmitter> action)
+        public void OnComplete(System.Action<AudioEmitter> onCompleted)
         {
             if (Result != null) {
-                action.Invoke(Result);
+                onCompleted.Invoke(Result);
                 return;
             }
             
-            async void Wait_(Awaitable<AudioEmitter> task)
+            async void WaitForEmitter(Awaitable<AudioEmitter> emitterTask)
             {
-                var emitter = await task;
-                action.Invoke(emitter);
+                var emitter = await emitterTask;
+                onCompleted.Invoke(emitter);
             }
-            Wait_(Task);
+            WaitForEmitter(Task);
         }
         
         public System.Runtime.CompilerServices.INotifyCompletion GetAwaiter()
