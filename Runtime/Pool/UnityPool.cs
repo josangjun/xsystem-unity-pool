@@ -153,9 +153,20 @@ namespace XSystem
         
         private readonly Dictionary<string, ItemStack> _pool = new();
         
-        internal void OnGet(PoolItem item) {
-            item.gameObject.SetActive(true);
-            item.OnGet();
+        internal bool OnGet(PoolItem item) {
+            if (item == null)
+                return false;
+
+            try
+            {
+                item.gameObject.SetActive(true);
+                item.OnGet();
+                return true;
+            }
+            catch (MissingReferenceException)
+            {
+                return false;
+            }
         }
         
         private void OnRelease(PoolItem item, bool reparentToPool = true) {
@@ -176,17 +187,17 @@ namespace XSystem
             
             if (_pool.TryGetValue(key, out var stack))
             {
-                if (stack.Count > 0)
+                while (stack.Count > 0)
                 {
                     var i = stack.Pop();
-                    OnGet(i);
-                    try {
-                        return (T)i;
-                    } catch {
-                        OnRelease(i);
-                        Debug.LogError($"Failed to cast pooled item to {typeof(T)}");
-                        return default;
-                    }
+                    if (!OnGet(i))
+                        continue;
+
+                    if (i is T typedItem)
+                        return typedItem;
+
+                    OnRelease(i);
+                    Debug.LogError($"Failed to cast pooled item to {typeof(T)}");
                 }
             }
             else
@@ -202,17 +213,17 @@ namespace XSystem
         {
             if (_pool.TryGetValue(path, out var stack))
             {
-                if (stack.Count > 0)
+                while (stack.Count > 0)
                 {
                     var i = stack.Pop();
-                    OnGet(i);
-                    try {
-                        return (T)i;
-                    } catch {
-                        OnRelease(i);
-                        Debug.LogError($"Failed to cast pooled item to {typeof(T)}");
-                        return default;
-                    }
+                    if (!OnGet(i))
+                        continue;
+
+                    if (i is T typedItem)
+                        return typedItem;
+
+                    OnRelease(i);
+                    Debug.LogError($"Failed to cast pooled item to {typeof(T)}");
                 }
             }
             else
@@ -317,11 +328,17 @@ namespace XSystem
             T item;
             if (_pool.TryGetValue(path, out var stack))
             {
-                if (stack.Count > 0)
+                while (stack.Count > 0)
                 {
-                    item = (T)stack.Pop();
-                    OnGet(item);
-                    return item;
+                    PoolItem pooledItem = stack.Pop();
+                    if (!OnGet(pooledItem))
+                        continue;
+
+                    if (pooledItem is T typedItem)
+                        return typedItem;
+
+                    OnRelease(pooledItem);
+                    Debug.LogError($"Failed to cast pooled item to {typeof(T)}");
                 }
             }
             else
@@ -369,7 +386,8 @@ namespace XSystem
                 while (stack.Count > 0)
                 {
                     var item = stack.Pop();
-                    Destroy(item.gameObject);
+                    if (item != null)
+                        Destroy(item.gameObject);
                 }
                 
                 stack.Release();
