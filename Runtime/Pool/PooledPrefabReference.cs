@@ -10,12 +10,6 @@ namespace XSystem
         [System.NonSerialized]
         private GameObjectPool _pool;
 
-        [System.NonSerialized]
-        private System.Action<GameObject> _onGet;
-
-        [System.NonSerialized]
-        private System.Action<GameObject> _onRelease;
-
         public PooledPrefabReference() : base(string.Empty)
         {
         }
@@ -24,37 +18,8 @@ namespace XSystem
         {
         }
 
-        public event System.Action<GameObject> OnGet
-        {
-            add
-            {
-                _onGet += value;
-                if (_pool != null)
-                    _pool.OnGet += value;
-            }
-            remove
-            {
-                _onGet -= value;
-                if (_pool != null)
-                    _pool.OnGet -= value;
-            }
-        }
-
-        public event System.Action<GameObject> OnRelease
-        {
-            add
-            {
-                _onRelease += value;
-                if (_pool != null)
-                    _pool.OnRelease += value;
-            }
-            remove
-            {
-                _onRelease -= value;
-                if (_pool != null)
-                    _pool.OnRelease -= value;
-            }
-        }
+        public event System.Action<GameObject> OnGet;
+        public event System.Action<GameObject> OnRelease;
 
         public bool IsPrefabLoaded =>
             IsValid() &&
@@ -192,9 +157,19 @@ namespace XSystem
                 return _pool;
 
             _pool = new GameObjectPool(prefab);
-            _pool.OnGet += _onGet;
-            _pool.OnRelease += _onRelease;
+            _pool.OnGet += HandleGet;
+            _pool.OnRelease += HandleRelease;
             return _pool;
+        }
+
+        private void HandleGet(GameObject go)
+        {
+            OnGet?.Invoke(go);
+        }
+
+        private void HandleRelease(GameObject go)
+        {
+            OnRelease?.Invoke(go);
         }
     }
 }
