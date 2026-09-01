@@ -27,7 +27,7 @@ namespace XSystem
             OperationHandle.Status == AsyncOperationStatus.Succeeded &&
             Asset is GameObject;
 
-        public async Awaitable WarmUpAsync(int count = 0)
+        public async Awaitable WarmUpAsync(int count = 0, Transform parent = null)
         {
             GameObject prefab;
             if (OperationHandle.IsValid() == false)
@@ -48,8 +48,8 @@ namespace XSystem
             var pool = GetOrCreatePool(prefab);
             for (var i = 0; i < count; i++)
             {
-                var go = pool.Get();
-                pool.Release(go);
+                var go = pool.Get(parent);
+                pool.Release(go, parent);
             }
         }
 
@@ -61,10 +61,12 @@ namespace XSystem
             return GetOrCreatePool(prefab).Get(parent);
         }
 
-        public void Release(GameObject go)
+        public void Release(GameObject go, Transform parent = null)
         {
+            if (parent != null)
+                go.transform.SetParent(parent);
             if (_pool != null)
-                _pool.Release(go);
+                _pool.Release(go, parent);
         }
 
         public void Clear()

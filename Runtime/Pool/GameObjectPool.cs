@@ -31,8 +31,9 @@ namespace XSystem
             return _pool.Get();
         }
         
-        public void Release(GameObject go)
+        public void Release(GameObject go, Transform parent = null)
         {
+            _parent = parent;
             _pool.Release(go);
         }
         
@@ -56,12 +57,14 @@ namespace XSystem
         private void HandleGet(GameObject go)
         {
             go.SetActive(true);
+            go.transform.SetParent(_parent);
             OnGet?.Invoke(go);
         }
         
         private void HandleRelease(GameObject go)
         {
             OnRelease?.Invoke(go);
+            go.transform.SetParent(_parent);
             go.SetActive(false);
         }
         
