@@ -5,7 +5,7 @@ using UnityEngine.Audio;
 namespace XSystem
 {
     [DisallowMultipleComponent, RequireComponent(typeof(AudioSource))]
-    public class AudioEmitter : PoolItem
+    public class AudioEmitter : MonoBehaviour
     {
         private AudioSource _source;
         
@@ -14,9 +14,8 @@ namespace XSystem
             return _source && _source.isPlaying;
         }
 
-        protected override void Awake()
+        protected void Awake()
         {
-            base.Awake();
             _source = GetComponent<AudioSource>();
         }
         

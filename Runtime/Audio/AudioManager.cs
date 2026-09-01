@@ -14,6 +14,7 @@ using UnityEngine.AddressableAssets;
 using UnityEngine.Audio;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.Serialization;
+using UnityEngine.Pool;
 
 namespace XSystem
 {
@@ -86,9 +87,7 @@ namespace XSystem
         
         protected virtual void Awake()
         {
-            _emitterPool = new ObjectPool<AudioEmitter>(CreateEmitter);
-            _emitterPool.OnRelease += OnRelease;
-            _emitterPool.OnGet += OnGet;
+            _emitterPool = new ObjectPool<AudioEmitter>(CreateEmitter, OnGet, OnRelease);
         }
         
         public void Start()
@@ -177,6 +176,8 @@ namespace XSystem
         
         private void OnRelease(AudioEmitter emitter)
         {
+            emitter.clip = null;
+            emitter.loop = false;
             emitter.transform.SetParent(transform);
             emitter.gameObject.SetActive(false);
         }

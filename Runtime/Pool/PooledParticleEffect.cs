@@ -6,7 +6,7 @@ namespace XSystem
     /// Reusable particle effect component for Addressables-backed UnityPool items.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class PooledParticleEffect : PoolItem
+    public sealed class PooledParticleEffect : PooledItem
     {
         [SerializeField]
         [Min(0f)]

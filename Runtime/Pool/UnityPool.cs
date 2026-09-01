@@ -9,118 +9,118 @@ using VContainer.Unity;
 #endif
 namespace XSystem
 {
-    internal class ItemStack : Stack<PoolItem>
-    {
-        public ItemStack(string key, PoolItem asset)
-        {
-            Key = key;
-            Asset = asset;
-        }
-        public ItemStack(string key)
-        {
-            Key = key;
-        }
-        public string Key { get; private set;}
-        private PoolItem Asset;
-        private AsyncOperationHandle<GameObject> OperationHandle;
-        
-        public T LoadAsset<T>() where T : PoolItem
-        {
-            if (Asset != null)
-                return (T)Asset;
-            
-            if (OperationHandle.IsValid())
-            {
-                if (OperationHandle.Status == AsyncOperationStatus.Succeeded && OperationHandle.Result != null)
-                {
-                    Asset = OperationHandle.Result.GetComponent<T>();
-                    return (T)Asset;
-                }
-                Addressables.Release(OperationHandle);
-            }
-            OperationHandle = Addressables.LoadAssetAsync<GameObject>(Key);
-            var go = OperationHandle.WaitForCompletion();
-            if (OperationHandle.Status != AsyncOperationStatus.Succeeded || go == null)
-            {
-                Debug.LogError($"Failed to load addressable: {Key}");
-                Addressables.Release(OperationHandle);
-                OperationHandle = default;
-                return default;
-            }
-
-            Asset = go.GetComponent<PoolItem>();
-            if (Asset == null)
-            {
-                Addressables.Release(OperationHandle);
-                OperationHandle = default;
-                return default;
-            }
-            try {
-                return (T)Asset;
-            } catch (System.InvalidCastException) {
-                Debug.LogError($"Failed to cast asset to {typeof(T)}: {Key}");
-                return default;
-            }
-        }
-
-        public async Awaitable<T> LoadAssetAsync<T>(CancellationToken cts = default) where T : PoolItem
-        {
-            if (Asset != null)
-                return (T)Asset;
-            
-            if (OperationHandle.IsValid())
-            {
-                if (OperationHandle.Status == AsyncOperationStatus.Succeeded && OperationHandle.Result != null)
-                {
-                    Asset = OperationHandle.Result.GetComponent<T>();
-                    return (T)Asset;
-                }
-                Addressables.Release(OperationHandle);
-            }
-            OperationHandle = Addressables.LoadAssetAsync<GameObject>(Key);
-            await OperationHandle.Task;
-            if (cts.IsCancellationRequested)
-            {
-                Addressables.Release(OperationHandle);
-                OperationHandle = default;
-                throw new System.OperationCanceledException($"the operation is canceled. {Key}");
-            }
-
-            if (OperationHandle.Status != AsyncOperationStatus.Succeeded)
-            {
-                Debug.LogError($"Failed to load addressable: {Key}");
-                Addressables.Release(OperationHandle);
-                OperationHandle = default;
-                return default;
-            }
-            var prefab = OperationHandle.Result;
-            Asset = prefab.GetComponent<PoolItem>();
-            if (Asset == null)
-            {
-                Asset = prefab.AddComponent<PoolItem>();
-            }
-            try {
-                return (T)Asset;
-            } catch (System.InvalidCastException) {
-                Debug.LogError($"Failed to cast asset to {typeof(T)}: {Key}");
-                return default;
-            }
-        }
-        
-        public void Release()
-        {
-            if (OperationHandle.IsValid())
-            {
-                Addressables.Release(OperationHandle);
-                OperationHandle = default;
-            }
-            Asset = null;
-        }
-    }
-    
     [DisallowMultipleComponent]
     public class UnityPool : MonoBehaviour, System.IDisposable
     {
+        private class ItemStack : Stack<PooledItem>
+        {
+            public ItemStack(string key, PooledItem asset)
+            {
+                Key = key;
+                Asset = asset;
+            }
+            public ItemStack(string key)
+            {
+                Key = key;
+            }
+            public string Key { get; private set;}
+            private PooledItem Asset;
+            private AsyncOperationHandle<GameObject> OperationHandle;
+            
+            public T LoadAsset<T>() where T : PooledItem
+            {
+                if (Asset != null)
+                    return (T)Asset;
+                
+                if (OperationHandle.IsValid())
+                {
+                    if (OperationHandle.Status == AsyncOperationStatus.Succeeded && OperationHandle.Result != null)
+                    {
+                        Asset = OperationHandle.Result.GetComponent<T>();
+                        return (T)Asset;
+                    }
+                    Addressables.Release(OperationHandle);
+                }
+                OperationHandle = Addressables.LoadAssetAsync<GameObject>(Key);
+                var go = OperationHandle.WaitForCompletion();
+                if (OperationHandle.Status != AsyncOperationStatus.Succeeded || go == null)
+                {
+                    Debug.LogError($"Failed to load addressable: {Key}");
+                    Addressables.Release(OperationHandle);
+                    OperationHandle = default;
+                    return default;
+                }
+
+                Asset = go.GetComponent<PooledItem>();
+                if (Asset == null)
+                {
+                    Addressables.Release(OperationHandle);
+                    OperationHandle = default;
+                    return default;
+                }
+                try {
+                    return (T)Asset;
+                } catch (System.InvalidCastException) {
+                    Debug.LogError($"Failed to cast asset to {typeof(T)}: {Key}");
+                    return default;
+                }
+            }
+
+            public async Awaitable<T> LoadAssetAsync<T>(CancellationToken cts = default) where T : PooledItem
+            {
+                if (Asset != null)
+                    return (T)Asset;
+                
+                if (OperationHandle.IsValid())
+                {
+                    if (OperationHandle.Status == AsyncOperationStatus.Succeeded && OperationHandle.Result != null)
+                    {
+                        Asset = OperationHandle.Result.GetComponent<T>();
+                        return (T)Asset;
+                    }
+                    Addressables.Release(OperationHandle);
+                }
+                OperationHandle = Addressables.LoadAssetAsync<GameObject>(Key);
+                await OperationHandle.Task;
+                if (cts.IsCancellationRequested)
+                {
+                    Addressables.Release(OperationHandle);
+                    OperationHandle = default;
+                    throw new System.OperationCanceledException($"the operation is canceled. {Key}");
+                }
+
+                if (OperationHandle.Status != AsyncOperationStatus.Succeeded)
+                {
+                    Debug.LogError($"Failed to load addressable: {Key}");
+                    Addressables.Release(OperationHandle);
+                    OperationHandle = default;
+                    return default;
+                }
+                var prefab = OperationHandle.Result;
+                Asset = prefab.GetComponent<PooledItem>();
+                if (Asset == null)
+                {
+                    Asset = prefab.AddComponent<PooledItem>();
+                }
+                try {
+                    return (T)Asset;
+                } catch (System.InvalidCastException) {
+                    Debug.LogError($"Failed to cast asset to {typeof(T)}: {Key}");
+                    return default;
+                }
+            }
+            
+            public void Release()
+            {
+                if (OperationHandle.IsValid())
+                {
+                    Addressables.Release(OperationHandle);
+                    OperationHandle = default;
+                }
+                Asset = null;
+            }
+        }
+    
 #if HAS_VCONTAINER
         
         public VContainer.IObjectResolver Container { get; private set; }
@@ -139,7 +139,7 @@ namespace XSystem
         }
 #else
         
-        internal T InstantiateT<T>(T prefab, Transform parent, bool worldPositionStays = false) where T : PoolItem
+        internal T InstantiateT<T>(T prefab, Transform parent, bool worldPositionStays = false) where T : PooledItem
         {
             var item = UnityEngine.Object.Instantiate(prefab, parent, worldPositionStays);
             item.Key = prefab.Key;
@@ -153,7 +153,7 @@ namespace XSystem
         
         private readonly Dictionary<string, ItemStack> _pool = new();
         
-        internal bool OnGet(PoolItem item) {
+        internal bool OnGet(PooledItem item) {
             if (item == null)
                 return false;
 
@@ -169,14 +169,14 @@ namespace XSystem
             }
         }
         
-        private void OnRelease(PoolItem item, bool reparentToPool = true) {
+        private void OnRelease(PooledItem item, bool reparentToPool = true) {
             item.OnRelease();
             if (reparentToPool)
                 item.transform.SetParent(transform);
             item.gameObject.SetActive(false);
         }
 
-        public T Get<T>(T prefab, Transform parent = null) where T : PoolItem
+        public T Get<T>(T prefab, Transform parent = null) where T : PooledItem
         {
             var key = prefab.Key;
             if (string.IsNullOrEmpty(key))
@@ -209,7 +209,7 @@ namespace XSystem
             return item;
         }
 
-        public T Get<T>(string path, Transform parent = null) where T : PoolItem
+        public T Get<T>(string path, Transform parent = null) where T : PooledItem
         {
             if (_pool.TryGetValue(path, out var stack))
             {
@@ -236,7 +236,7 @@ namespace XSystem
             return item;
         }
         
-        private T Create<T>(ItemStack stack, Transform parent = null) where T : PoolItem
+        private T Create<T>(ItemStack stack, Transform parent = null) where T : PooledItem
         {
             T item = null;
             try
@@ -260,7 +260,7 @@ namespace XSystem
             return item;
         }
         
-        private async Awaitable<T> CreateAsync<T>(ItemStack stack, Transform parent = null, CancellationToken cts = default) where T : PoolItem
+        private async Awaitable<T> CreateAsync<T>(ItemStack stack, Transform parent = null, CancellationToken cts = default) where T : PooledItem
         {
             T item = null;
             try
@@ -292,7 +292,7 @@ namespace XSystem
         public async Awaitable Prepare(string path, int count)
         {
             var finished = 0;
-            async Awaitable WaitAndRelease(Awaitable<PoolItem> t)
+            async Awaitable WaitAndRelease(Awaitable<PooledItem> t)
             {
                 try
                 {
@@ -309,28 +309,28 @@ namespace XSystem
             _pool[path] = stack;
             for (int i = 0; i < count; i++)
             {
-                var item = CreateAsync<PoolItem>(stack);
+                var item = CreateAsync<PooledItem>(stack);
                 _ = WaitAndRelease(item);
             }
             while (finished < count)
                 await Awaitable.NextFrameAsync();
         }
 
-        public void Destroy(PoolItem obj)
+        public void Destroy(PooledItem obj)
         {
             if (obj == null)
                 return;
             Destroy(obj.gameObject);
         }
         
-        public async Awaitable<T> GetAsync<T>(string path, Transform parent = null, CancellationToken cts = default) where T  : PoolItem
+        public async Awaitable<T> GetAsync<T>(string path, Transform parent = null, CancellationToken cts = default) where T  : PooledItem
         {
             T item;
             if (_pool.TryGetValue(path, out var stack))
             {
                 while (stack.Count > 0)
                 {
-                    PoolItem pooledItem = stack.Pop();
+                    PooledItem pooledItem = stack.Pop();
                     if (!OnGet(pooledItem))
                         continue;
 
@@ -352,7 +352,7 @@ namespace XSystem
             return item;
         }
         
-        public void Release(PoolItem item, bool reparentToPool = true)
+        public void Release(PooledItem item, bool reparentToPool = true)
         {
             if (item == null)
                 return;

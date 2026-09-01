@@ -3,7 +3,7 @@ using UnityEngine;
 namespace XSystem
 {
     [DisallowMultipleComponent]
-    public class PoolItem : MonoBehaviour
+    public class PooledItem : MonoBehaviour
     {
         public virtual void OnGet()
         {
