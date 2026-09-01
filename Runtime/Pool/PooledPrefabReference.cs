@@ -49,7 +49,7 @@ namespace XSystem
             for (var i = 0; i < count; i++)
             {
                 var go = pool.Get(parent);
-                pool.Release(go, parent);
+                pool.Release(go);
             }
         }
 
@@ -61,12 +61,10 @@ namespace XSystem
             return GetOrCreatePool(prefab).Get(parent);
         }
 
-        public void Release(GameObject go, Transform parent = null)
+        public void Release(GameObject go)
         {
-            if (parent != null)
-                go.transform.SetParent(parent);
             if (_pool != null)
-                _pool.Release(go, parent);
+                _pool.Release(go);
         }
 
         public void Clear()

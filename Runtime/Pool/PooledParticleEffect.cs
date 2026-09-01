@@ -3,7 +3,7 @@ using UnityEngine;
 namespace XSystem
 {
     /// <summary>
-    /// Reusable particle effect component for Addressables-backed UnityPool items.
+    /// Reusable particle effect component for pooled prefab instances.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class PooledParticleEffect : PooledItem
