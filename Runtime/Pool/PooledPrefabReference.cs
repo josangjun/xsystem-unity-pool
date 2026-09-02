@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.Pool;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace XSystem
@@ -45,12 +47,19 @@ namespace XSystem
             if (prefab == null)
                 return;
 
+            var list = ListPool<GameObject>.Get();
             var pool = GetOrCreatePool(prefab);
             for (var i = 0; i < count; i++)
             {
                 var go = pool.Get(parent);
-                pool.Release(go);
+                list.Add(go);
             }
+            for (var i = 0; i < list.Count; i++)
+            {
+                pool.Release(list[i]);
+            }
+            list.Clear();
+            ListPool<GameObject>.Release(list);
         }
 
         public GameObject Get(Transform parent = null)
