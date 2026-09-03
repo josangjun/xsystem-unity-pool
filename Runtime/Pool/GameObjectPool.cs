@@ -1,100 +1,91 @@
 using UnityEngine;
-using UnityEngine.Pool;
 
 namespace XSystem
 {
     [System.Serializable]
     public class GameObjectPool : System.IDisposable
     {
-        private const int DefaultCapacity = 10;
-        private const int DefaultMaxSize = 30;
-        private const string SharedPoolRootName = "[XSystem Pool]";
-
-#if UNITY_EDITOR
-        private static readonly System.Collections.Generic.HashSet<GameObjectPool> s_activePools =
-            new System.Collections.Generic.HashSet<GameObjectPool>();
-
-        internal static System.Collections.Generic.IEnumerable<GameObjectPool> ActivePools => s_activePools;
-#endif
-
-        [System.NonSerialized]
-        private static Transform _sharedPoolRoot;
-
         [SerializeField]
         private GameObject _prefab;
 
-        [SerializeField, Min(0)]
-        private int _defaultCapacity = DefaultCapacity;
-
-        [SerializeField, Min(1)]
-        private int _maxSize = DefaultMaxSize;
+        [SerializeField]
+        private PrefabPoolSettings _settings = new PrefabPoolSettings();
 
         [System.NonSerialized]
-        private ObjectPool<GameObject> _pool;
+        private PrefabInstancePool _pool;
 
-#if UNITY_EDITOR
         [System.NonSerialized]
-        private System.Collections.Generic.HashSet<GameObject> _idleObjects;
-#endif
+        private bool _isDisposed;
 
         public event System.Action<GameObject> OnGet;
         public event System.Action<GameObject> OnRelease;
-
-        [System.NonSerialized]
-        private Transform _parent;
 
         public GameObjectPool()
         {
         }
 
-        public GameObjectPool(GameObject prefab, int defaultCapacity = DefaultCapacity, int maxSize = DefaultMaxSize)
+        public GameObjectPool(
+            GameObject prefab,
+            int defaultCapacity = PrefabPoolSettings.DefaultCapacityValue,
+            int maxSize = PrefabPoolSettings.DefaultMaxSizeValue)
         {
             _prefab = prefab;
-            _defaultCapacity = defaultCapacity;
-            _maxSize = maxSize;
+            _settings = new PrefabPoolSettings(defaultCapacity, maxSize);
             EnsurePool();
         }
+
+        public int Capacity
+        {
+            get => _settings != null ? _settings.DefaultCapacity : 0;
+            set
+            {
+                if (_pool != null)
+                {
+                    Debug.LogError("GameObjectPool capacity cannot be changed after the pool has been initialized.");
+                    return;
+                }
+
+                if (_settings == null)
+                    _settings = new PrefabPoolSettings();
+
+                _settings = new PrefabPoolSettings(value, MaxSize);
+            }
+        }
+
+        public int MaxSize => _settings != null ? _settings.MaxSize : 1;
 
         public GameObject Get(Transform parent = null)
         {
             if (!EnsurePool())
                 return null;
 
-            _parent = parent;
-            return _pool.Get();
+            return _pool.Get(parent);
         }
 
-        public void Release(GameObject go)
+        public void Release(GameObject instance)
         {
-            if (go == null || _pool == null)
+            if (instance == null)
+                return;
+
+            if (_pool == null)
             {
-                Object.Destroy(go);
+                Object.Destroy(instance);
                 return;
             }
 
-            _parent = GetSharedPoolRoot();
-            _pool.Release(go);
+            _pool.Release(instance);
         }
 
         public void Clear()
         {
             _pool?.Clear();
-#if UNITY_EDITOR
-            _idleObjects?.Clear();
-#endif
         }
-
-        private bool _isDisposed = false;
 
         public void Dispose()
         {
-            _pool?.Clear();
+            _pool?.Dispose();
             _pool = null;
             _isDisposed = true;
-#if UNITY_EDITOR
-            _idleObjects?.Clear();
-            s_activePools.Remove(this);
-#endif
         }
 
         private bool EnsurePool()
@@ -114,106 +105,24 @@ namespace XSystem
                 return false;
             }
 
-            var defaultCapacity = Mathf.Max(0, _defaultCapacity);
-            var maxSize = Mathf.Max(defaultCapacity, _maxSize);
-
-            _pool = new(CreateInstance,
+            _pool = new PrefabInstancePool(
+                _prefab,
+                Capacity,
+                MaxSize,
                 HandleGet,
-                HandleRelease,
-                HandleOnDestroy,
-                #if UNITY_EDITOR
-                collectionCheck: true,
-                #else
-                collectionCheck: false,
-                #endif
-                defaultCapacity: defaultCapacity,
-                maxSize: maxSize);
-#if UNITY_EDITOR
-            s_activePools.Add(this);
-#endif
+                HandleRelease);
             return true;
         }
 
-        private GameObject CreateInstance()
+        private void HandleGet(GameObject instance)
         {
-            var go = Object.Instantiate(_prefab, _parent);
-            return go;
+            OnGet?.Invoke(instance);
         }
 
-        private static Transform GetSharedPoolRoot()
+        private void HandleRelease(GameObject instance)
         {
-            if (_sharedPoolRoot != null)
-            {
-#if UNITY_EDITOR
-                EnsureDebugView(_sharedPoolRoot);
-#endif
-                return _sharedPoolRoot;
-            }
-
-            var poolRoot = new GameObject(SharedPoolRootName);
-#if UNITY_EDITOR
-            poolRoot.AddComponent<GameObjectPoolDebugView>();
-#endif
-            _sharedPoolRoot = poolRoot.transform;
-            return _sharedPoolRoot;
+            OnRelease?.Invoke(instance);
         }
-
-#if UNITY_EDITOR
-        private static void EnsureDebugView(Transform poolRoot)
-        {
-            if (!poolRoot.TryGetComponent<GameObjectPoolDebugView>(out _))
-                poolRoot.gameObject.AddComponent<GameObjectPoolDebugView>();
-        }
-#endif
-
-        private void HandleGet(GameObject go)
-        {
-#if UNITY_EDITOR
-            _idleObjects?.Remove(go);
-#endif
-            go.SetActive(true);
-            go.transform.SetParent(_parent);
-            go.GetComponent<PooledItem>()?.OnGet();
-            OnGet?.Invoke(go);
-        }
-
-        private void HandleRelease(GameObject go)
-        {
-#if UNITY_EDITOR
-            GetIdleObjects().Add(go);
-#endif
-            go.GetComponent<PooledItem>()?.OnRelease();
-            OnRelease?.Invoke(go);
-            go.transform.SetParent(_parent);
-            go.SetActive(false);
-        }
-
-        private void HandleOnDestroy(GameObject go)
-        {
-#if UNITY_EDITOR
-            _idleObjects?.Remove(go);
-#endif
-            Object.Destroy(go);
-        }
-
-#if UNITY_EDITOR
-        internal GameObject Prefab => _prefab;
-        internal int ConfiguredDefaultCapacity => _defaultCapacity;
-        internal int MaxSize => Mathf.Max(_defaultCapacity, _maxSize);
-        internal int Size => _pool?.CountAll ?? 0;
-        internal int ActiveCount => _pool?.CountActive ?? 0;
-        internal int IdleCount => _pool?.CountInactive ?? 0;
-        internal int IdleObjectCount => _idleObjects?.Count ?? 0;
-        internal System.Collections.Generic.IEnumerable<GameObject> IdleObjects =>
-            _idleObjects != null
-                ? (System.Collections.Generic.IEnumerable<GameObject>)_idleObjects
-                : System.Array.Empty<GameObject>();
-
-        private System.Collections.Generic.HashSet<GameObject> GetIdleObjects()
-        {
-            return _idleObjects ??= new System.Collections.Generic.HashSet<GameObject>();
-        }
-#endif
     }
 }
 
@@ -237,13 +146,14 @@ namespace XSystem
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
-            var prefabProperty = property.FindPropertyRelative("_prefab");
-            var defaultCapacityProperty = property.FindPropertyRelative("_defaultCapacity");
-            var maxSizeProperty = property.FindPropertyRelative("_maxSize");
+            SerializedProperty prefabProperty = property.FindPropertyRelative("_prefab");
+            SerializedProperty settingsProperty = property.FindPropertyRelative("_settings");
+            SerializedProperty defaultCapacityProperty = settingsProperty?.FindPropertyRelative("_defaultCapacity");
+            SerializedProperty maxSizeProperty = settingsProperty?.FindPropertyRelative("_maxSize");
 
             EditorGUI.BeginProperty(position, label, property);
 
-            var linePosition = new Rect(
+            Rect linePosition = new Rect(
                 position.x,
                 position.y,
                 position.width,
@@ -276,7 +186,6 @@ namespace XSystem
             EditorGUI.PropertyField(linePosition, maxSizeProperty, new GUIContent("Max Size"));
 
             EditorGUI.indentLevel--;
-
             EditorGUI.EndProperty();
         }
     }

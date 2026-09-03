@@ -7,111 +7,122 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 namespace XSystem
 {
     [System.Serializable]
-    public class PooledPrefabReference : AssetReferenceGameObject, System.IDisposable
+    public class PooledPrefabReference : System.IDisposable
     {
-        [System.NonSerialized]
-        private GameObjectPool _pool;
+        [SerializeField]
+        private AssetReferenceGameObject _assetReference = new AssetReferenceGameObject(string.Empty);
 
-        public PooledPrefabReference() : base(string.Empty)
+        [SerializeField]
+        private PrefabPoolSettings _settings = new PrefabPoolSettings();
+
+        [System.NonSerialized]
+        private PrefabInstancePool _pool;
+
+        public PooledPrefabReference()
         {
         }
 
-        public PooledPrefabReference(string guid) : base(guid)
+        public PooledPrefabReference(
+            string guid,
+            int defaultCapacity = PrefabPoolSettings.DefaultCapacityValue,
+            int maxSize = PrefabPoolSettings.DefaultMaxSizeValue)
         {
+            _assetReference = new AssetReferenceGameObject(guid);
+            _settings = new PrefabPoolSettings(defaultCapacity, maxSize);
         }
 
         public event System.Action<GameObject> OnGet;
         public event System.Action<GameObject> OnRelease;
 
+        public int Capacity => _settings != null ? _settings.DefaultCapacity : 0;
+        public int MaxSize => _settings != null ? _settings.MaxSize : 1;
+
         public bool IsPrefabLoaded =>
-            IsValid() &&
-            IsDone &&
-            OperationHandle.Status == AsyncOperationStatus.Succeeded &&
-            Asset is GameObject;
+            HasAssetReference &&
+            _assetReference.IsValid() &&
+            _assetReference.IsDone &&
+            _assetReference.OperationHandle.Status == AsyncOperationStatus.Succeeded &&
+            _assetReference.Asset is GameObject;
 
         public async Awaitable WarmUpAsync(int count = 0, Transform parent = null)
         {
             GameObject prefab;
-            if (OperationHandle.IsValid() == false)
+            if (!HasAssetReference || !_assetReference.OperationHandle.IsValid())
             {
                 prefab = await LoadPrefabAsync();
             }
             else
             {
-                if (OperationHandle.IsDone == false)
-                {
-                    await OperationHandle.Task;
-                }
-                prefab = Asset as GameObject;
+                if (!_assetReference.OperationHandle.IsDone)
+                    await _assetReference.OperationHandle.Task;
+
+                prefab = _assetReference.Asset as GameObject;
             }
+
             if (prefab == null)
                 return;
 
-            var list = ListPool<GameObject>.Get();
-            var pool = GetOrCreatePool(prefab);
-            for (var i = 0; i < count; i++)
+            List<GameObject> instances = ListPool<GameObject>.Get();
+            PrefabInstancePool pool = GetOrCreatePool(prefab);
+            for (int i = 0; i < count; i++)
             {
-                var go = pool.Get(parent);
-                list.Add(go);
+                GameObject instance = pool.Get(parent);
+                if (instance != null)
+                    instances.Add(instance);
             }
-            for (var i = 0; i < list.Count; i++)
-            {
-                pool.Release(list[i]);
-            }
-            list.Clear();
-            ListPool<GameObject>.Release(list);
+
+            for (int i = 0; i < instances.Count; i++)
+                pool.Release(instances[i]);
+
+            instances.Clear();
+            ListPool<GameObject>.Release(instances);
         }
 
         public GameObject Get(Transform parent = null)
         {
-            if (!TryGetLoadedPrefab(out var prefab))
+            if (!TryGetLoadedPrefab(out GameObject prefab))
                 return null;
 
             return GetOrCreatePool(prefab).Get(parent);
         }
 
-        public void Release(GameObject go)
+        public void Release(GameObject instance)
         {
-            if (_pool != null)
-                _pool.Release(go);
+            _pool?.Release(instance);
         }
 
         public void Clear()
         {
-            if (_pool != null)
-                _pool.Clear();
+            _pool?.Clear();
         }
 
         public void Dispose()
         {
-            if (_pool != null)
-            {
-                _pool.Dispose();
-                _pool = null;
-            }
+            _pool?.Dispose();
+            _pool = null;
 
-            if (IsValid())
-                base.ReleaseAsset();
+            if (HasAssetReference && _assetReference.IsValid())
+                _assetReference.ReleaseAsset();
         }
 
-        public override void ReleaseAsset()
+        public void ReleaseAsset()
         {
             Dispose();
         }
 
         private async Awaitable<GameObject> LoadPrefabAsync()
         {
-            if (!RuntimeKeyIsValid())
+            if (!HasAssetReference || !_assetReference.RuntimeKeyIsValid())
             {
                 Debug.LogError("Pooled prefab reference has no valid asset assigned.");
                 return null;
             }
 
             AsyncOperationHandle<GameObject> handle;
-            if (IsValid())
-                handle = OperationHandle.Convert<GameObject>();
+            if (_assetReference.IsValid())
+                handle = _assetReference.OperationHandle.Convert<GameObject>();
             else
-                handle = LoadAssetAsync();
+                handle = _assetReference.LoadAssetAsync();
 
             if (!handle.IsValid())
                 return null;
@@ -121,7 +132,7 @@ namespace XSystem
 
             if (handle.Status != AsyncOperationStatus.Succeeded || handle.Result == null)
             {
-                Debug.LogError($"Failed to load pooled prefab reference: {RuntimeKey}");
+                Debug.LogError($"Failed to load pooled prefab reference: {_assetReference.RuntimeKey}");
                 return null;
             }
 
@@ -131,28 +142,29 @@ namespace XSystem
         private bool TryGetLoadedPrefab(out GameObject prefab)
         {
             prefab = null;
-            if (!RuntimeKeyIsValid())
+            if (!HasAssetReference || !_assetReference.RuntimeKeyIsValid())
             {
                 Debug.LogError("Pooled prefab reference has no valid asset assigned.");
                 return false;
             }
 
-            if (!IsValid())
+            if (!_assetReference.IsValid())
             {
-                LoadAssetAsync();
+                _assetReference.LoadAssetAsync();
                 Debug.LogWarning("Pooled prefab reference is loading. Call WarmUpAsync before Get.");
                 return false;
             }
 
-            if (!IsDone)
+            if (!_assetReference.IsDone)
             {
                 Debug.LogWarning("Pooled prefab reference is still loading. Call WarmUpAsync before Get.");
                 return false;
             }
 
-            if (OperationHandle.Status != AsyncOperationStatus.Succeeded || !(Asset is GameObject loadedPrefab))
+            if (_assetReference.OperationHandle.Status != AsyncOperationStatus.Succeeded ||
+                !(_assetReference.Asset is GameObject loadedPrefab))
             {
-                Debug.LogError($"Failed to load pooled prefab reference: {RuntimeKey}");
+                Debug.LogError($"Failed to load pooled prefab reference: {_assetReference.RuntimeKey}");
                 return false;
             }
 
@@ -160,25 +172,30 @@ namespace XSystem
             return true;
         }
 
-        private GameObjectPool GetOrCreatePool(GameObject prefab)
+        private PrefabInstancePool GetOrCreatePool(GameObject prefab)
         {
             if (_pool != null)
                 return _pool;
 
-            _pool = new GameObjectPool(prefab);
-            _pool.OnGet += HandleGet;
-            _pool.OnRelease += HandleRelease;
+            _pool = new PrefabInstancePool(
+                prefab,
+                Capacity,
+                MaxSize,
+                HandleGet,
+                HandleRelease);
             return _pool;
         }
 
-        private void HandleGet(GameObject go)
+        private void HandleGet(GameObject instance)
         {
-            OnGet?.Invoke(go);
+            OnGet?.Invoke(instance);
         }
 
-        private void HandleRelease(GameObject go)
+        private void HandleRelease(GameObject instance)
         {
-            OnRelease?.Invoke(go);
+            OnRelease?.Invoke(instance);
         }
+
+        private bool HasAssetReference => _assetReference != null;
     }
 }

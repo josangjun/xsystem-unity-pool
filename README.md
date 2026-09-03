@@ -7,7 +7,7 @@ Unity object-pooling and audio playback utilities for XSystem projects.
 ### Prefab pooling
 
 * `GameObjectPool` pools instances of an already loaded `GameObject` prefab.
-* `PooledPrefabReference` extends `AssetReferenceGameObject` with Addressables loading and prefab pooling.
+* `PooledPrefabReference` owns an `AssetReferenceGameObject`, Addressables loading, and prefab pooling as one serialized wrapper.
 * `UnityPool`, `PooledItem`, and `PooledParticleEffect` provide keyed pooling for Addressables-backed pool items.
 * `GameObjectPool` and `PooledPrefabReference` expose `OnGet` and `OnRelease` callbacks for per-instance initialization and cleanup.
 * `UnityPool` invokes `PooledItem.OnGet()` and `PooledItem.OnRelease()` during its item lifecycle.
@@ -113,7 +113,11 @@ public sealed class EffectPlayer : MonoBehaviour
 }
 ```
 
-`PooledPrefabReference` uses the `OperationHandle` inherited from `AssetReferenceGameObject`. `WarmUpAsync` loads the prefab and optionally creates the requested number of pooled instances. Call `WarmUpAsync` before synchronous `Get` when the reference has not been loaded yet.
+`PooledPrefabReference` owns one internal `AssetReferenceGameObject` and its operation handle. Its Inspector foldout exposes the Addressable prefab, Default Capacity, and Max Size. Default Capacity configures the pool's initial storage capacity; it does not instantiate objects. `WarmUpAsync` loads the prefab and optionally creates the requested number of pooled instances. Call `WarmUpAsync` before synchronous `Get` when the reference has not been loaded yet.
+
+`Max Size` controls how many returned instances the pool retains. Instances returned after the pool reaches that size are destroyed. The pool configuration is applied when the first instance pool is created.
+
+The shared `[XSystem Pool]` root is runtime-only. It is cleaned up when the application quits or when the Unity Editor exits Play Mode, and late releases during teardown destroy their instances instead of creating a new root.
 
 `ReleaseAsset()` clears the instance pool and releases the Addressables handle. Do not separately load the same reference through another owner; keep loading and release ownership with `PooledPrefabReference`.
 

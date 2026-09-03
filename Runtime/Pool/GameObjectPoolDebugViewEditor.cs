@@ -8,7 +8,7 @@ namespace XSystem
     [CustomEditor(typeof(GameObjectPoolDebugView))]
     internal sealed class GameObjectPoolDebugViewEditor : Editor
     {
-        private readonly List<GameObjectPool> _pools = new List<GameObjectPool>();
+        private readonly List<PrefabInstancePool> _pools = new List<PrefabInstancePool>();
         private SerializedProperty _sortByIdleCountDescendingProperty;
 
         private void OnEnable()
@@ -27,7 +27,7 @@ namespace XSystem
             serializedObject.Update();
 
             _pools.Clear();
-            foreach (GameObjectPool pool in GameObjectPool.ActivePools)
+            foreach (PrefabInstancePool pool in PrefabInstancePool.ActivePools)
             {
                 if (pool != null)
                     _pools.Add(pool);
@@ -51,7 +51,7 @@ namespace XSystem
                     _pools.Sort(CompareByIdleCountDescending);
             }
             int totalCount = totalActiveCount + totalIdleCount;
-            EditorGUILayout.LabelField("GameObject Pools", _pools.Count.ToString());
+            EditorGUILayout.LabelField("Prefab Instance Pools", _pools.Count.ToString());
             EditorGUILayout.LabelField("Total Count (Active / Idle)", $"{totalCount} ({totalActiveCount} / {totalIdleCount})");
             EditorGUILayout.LabelField("Status", "Live Editor view");
 
@@ -60,7 +60,7 @@ namespace XSystem
             if (_pools.Count == 0)
             {
                 EditorGUILayout.HelpBox(
-                    "No GameObjectPool has been initialized in this Editor session.",
+                    "No prefab instance pool has been initialized in this Editor session.",
                     MessageType.Info);
                 return;
             }
@@ -80,7 +80,7 @@ namespace XSystem
             Repaint();
         }
 
-        private static int CompareByIdleCountDescending(GameObjectPool left, GameObjectPool right)
+        private static int CompareByIdleCountDescending(PrefabInstancePool left, PrefabInstancePool right)
         {
             int idleCountComparison = right.IdleCount.CompareTo(left.IdleCount);
             if (idleCountComparison != 0)
@@ -91,7 +91,7 @@ namespace XSystem
             return string.CompareOrdinal(leftPrefabName, rightPrefabName);
         }
 
-        private static void DrawPool(GameObjectPool pool, int index)
+        private static void DrawPool(PrefabInstancePool pool, int index)
         {
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
