@@ -181,7 +181,7 @@ namespace XSystem
             var key = prefab.Key;
             if (string.IsNullOrEmpty(key))
             {
-                key = $"@{prefab.name}:{prefab.GetInstanceID()}";
+                key = $"@{prefab.name}:{prefab.GetEntityId()}";
                 prefab.Key = key;
             }
             
