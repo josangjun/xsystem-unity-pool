@@ -181,7 +181,11 @@ namespace XSystem
             var key = prefab.Key;
             if (string.IsNullOrEmpty(key))
             {
+                #if UNITY_6000_6_OR_NEWER
+                key = $"@{prefab.name}:{prefab.GetEntityId()}";
+                #else
                 key = $"@{prefab.name}:{prefab.GetInstanceID()}";
+                #endif
                 prefab.Key = key;
             }
             
