@@ -162,7 +162,7 @@ namespace XSystem
 #if UNITY_EDITOR
             _idleObjects.Remove(instance);
 #endif
-            UnityEngine.Object.Destroy(instance);
+            DestroyOwnedObject(instance);
         }
 
         private void ReleaseAndDestroy(GameObject instance)
@@ -228,7 +228,22 @@ namespace XSystem
             Transform poolRoot = _sharedPoolRoot;
             _sharedPoolRoot = null;
             if (poolRoot != null)
-                UnityEngine.Object.Destroy(poolRoot.gameObject);
+                DestroyOwnedObject(poolRoot.gameObject);
+        }
+
+        private static void DestroyOwnedObject(GameObject instance)
+        {
+            if (instance == null)
+                return;
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+                return;
+            }
+#endif
+            UnityEngine.Object.Destroy(instance);
         }
 
 #if UNITY_EDITOR
